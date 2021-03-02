@@ -1,0 +1,876 @@
+---
+title: "MA5832 - Assessment 2"
+author: "Daniel Majer"
+date: "02/02/2021"
+output:
+  html_document:
+    code_folding: hide
+---
+
+# Part 1: An analytical problem
+## Introduction
+Support vector machines (SVM) are a method of supervised learing algorithms that analyse data used for classification and regression analysis (Data Camp, 2018). This method of analysis is useful in computational classification between two distinct groups. SVM inspects the data through the space of *p* dimensional feature vectors and constructs a (*p* - 1) dimensional decision boundary called a hyperplane. When SVM is implemented on a datasets, the algorithm works to evenly position the hyperplane between either category of data points, using mathematical optimisation. That is, each classification algorithm tries to find hyperplanes that optimse some cost of loss function. Once the decision boundary has been optimised, in which distance between partition has been maximised, support vectors are added either side of the decision boundary. This makes the SVM model more robust to individal observations and offers a better classification of additional data points added to the algorithm. In the first part of this assessment, a optimal separating hyperplan was manually coded using the programming language `R`. 
+
+We consider a training data with 12 observations with two dimensions, (X1, X2). For each observation, there is an associated class label Y = {−1, 1} as follows
+
+\begin{center}
+\begin{tabular}{ c c c } 
+$X_1$ & $X_2$ & $Y$ \\
+3 & 2 & -1 \\ 
+4 & 0 & -1 \\
+3.5 & -1 & -1 \\
+5 & 1 & -1 \\
+4 & -3 & -1 \\
+6 & -2 & -1 \\
+2 & 5 & 1 \\ 
+-1 & 7 & 1 \\
+3 & 6.5 & 1 \\
+3 & 7 & 1 \\
+-2 & 7 & 1 \\
+-1 & 10 & 1 \\
+\end{tabular}
+\end{center}
+
+1. Draw a scatter plot to represent the points with Red colour for the class Y = 1 and Blue colour for Y = −1. X1 is on the vertical axis while X2 is on the horizontal axis.
+
+```{r setup, warning=F, message=F}
+#defining Libraries
+library(tidyverse)
+library(scales)
+library(quadprog)
+library(knitr)
+```
+
+```{r}
+#defining X1, X2 and Y vectors
+x1 <- c(3,4,3.5,5,4,6,2,-1,3,3,-2,-1)
+x2 <- c(2,0,-1,1,-3,-2,5,7,6.5,7,7,10)
+y <- c(rep(-1,6), rep(1,6))
+
+#defining dataframes
+data <- data.frame(cbind(x1, x2, y))
+data$y <- as.factor(data$y) #change y to a factor
+```
+
+
+```{r out.width="70%"}
+#plotting raw data 
+data %>%
+  ggplot(aes(x = x2, y =x1, col = y))+
+  geom_point(aes(size = 8))+
+  theme_classic()+
+  scale_color_manual(values = c("blue", "red"))+
+  scale_y_continuous(labels = number_format(accuracy = 1), breaks = -2:8) +
+  scale_x_continuous(labels = number_format(accuracy = 1), breaks = -3:10)
+```
+
+### Task 2
+* Find the optimal separating hyperplane of the classification problem using the function solve.QP() from quadprog in R. Show your work.
+
+The equation to find the hyperplane is: 
+
+$$w^TX + b = 0 $$
+Where w represents that weights in a vector, X is the data values and b is the y-intercept ($\beta_0$).
+
+As stated above, a hyperplane is found by maximising the distance from points from each class where the soft boundaries (Support vectors) are situated. The above equation is set to zero because it means that a decision boundary runs though these two soft boundaries. However, this boundary may not be optimised as multiple line can be drawn through the boundary. Thus the following equation can be used to optimise the decision:
+
+$$ \sum Y - w^T X + b = 0 = w^TX + b  $$
+
+To calculate the respective support vectors on either side of the hyperplane for class {-1, 1} the following constraint must be satisfied:
+$$H_1 = w^TX + b \le -1 \space for \space X \space of \space class \space -1$$
+
+$$H_2 = w^TX + b \le -1 \space for \space X \space of \space class \space 1$$
+
+The optimised hyperplane line is the median perdictular distance between each support vector. This can be calucalted using to follwing equation: 
+
+$$\beta_0 = ((\beta_1 - \beta_2)/\sqrt{A^2 -B^2})\frac{1}{2} $$
+
+Where $\beta_0$ represents the y-intercept of the perpendicular distance between of two lines ($\beta_1$ and $\beta_2$) and A and B are the coefficeints of the slope.
+
+The solve.QP() function from the quadprog library in R implements the dual method of Goldfarb and Idnani (1982, 1983) for sloving quadratic problems of the from $min(-d^Tb+1/2b^TDb)$ with contraints $A^Tb\ge b_0$. This function takes in various arguments )see below that were prepared before using the function. 
+
+**Arugments**
+
+* **Dmat**: matrix appearing in the quadratic function to be minimized.
+* **dvec**: vector appearing in the quadratic function to be minimized.
+* **Amat**: matrix defining the constraints under which we want to minimize the quadratic function.
+* **bvec**: vector holding the values of $b_0$ (defaults to zero).
+* **meq**: the first `meq` constraints are treated as equality constraints, all further as inequality constraints (defaults to 0).
+* **factorized**: logical flag indicating $R^{-1}$ (where $D = R^TR$) instead of the matrix **Dmat** Matrix
+
+In addition to the *R Documentation* the GitHub article from Walker (2020) was used as a guide to find the optimal separating hyperplne using solve.QP(). The article compares the accuracy between implementing SMV on the `IRIS` dataset in `R` using three methods, `solve.QP()`, using kernlab's `ipop()`, and by the e1071 wrapper around libsvm (`svm()`). 
+
+```{r}
+#defining epselon 
+eps <- 1e-8
+
+#defining X and Y matrice
+X = as.matrix(data[,c('x2', 'x1')])
+Y = as.matrix(y)
+n <- nrow(X)
+
+# matrix to be minimised in the quadratic function
+Q <- sapply(1:n, function(i) Y[i] * t(X)[, i]) #
+D <- t(Q) %*% Q #
+D <- D + eps * diag(n)
+
+#additional matrices to be input into QP solver
+d <- matrix(1,nrow = n) #
+A <- t(rbind(matrix(Y, nrow = 1, ncol = n), diag(nrow = n)))#
+beata_0 <-  rbind( matrix(0, nrow=1, ncol=1) , matrix(0, nrow=n, ncol=1) )
+
+#calling QP solver
+solve <- solve.QP(D, d, A, beata_0, meq = 1, factorized = FALSE)
+solution <- matrix(solve$solution, nrow = n)
+```
+
+* Sketch the optimal separating hyperplane in the scatter plot obtained in Question 1.
+
+From the solution, the coefficients were calculated from a user-defined function called, find_hyperplane(). This function calculates the slope of each line,  the coefficient for the optimal separating hyperplane $\beta_0$ as well the coefficent for each respective hyperplane. These values are returned in a list. 
+
+```{r}
+#user-defined hyperplane finder function
+#function extracts the decision boundary from the QP solution 
+find_hyperplane <- function(solution, Y, X){
+  nonzero <- abs(solution) > 1e-1
+  Weights <- rowSums(sapply(which(nonzero), function(i) solution[i]*Y[i]*X[i,]))
+  beta <- mean(sapply(which(nonzero), function(i) X[i,] %*% Weights - Y[i]))
+  beta1 <- beta - 1
+  beta2 <- beta + 1
+  slope <- -Weights[1]/Weights[2] #calculating the slope of the boundary
+  yint <- beta/Weights[2] #calculating the intercept
+  yint1 <- beta1/Weights[2]
+  yint2 <- beta2/Weights[2]
+  return(c(slope, yint, yint1, yint2))
+}
+```
+
+```{r}
+#calling hyperplane function to find QP Hyperplane
+QP_hyperplane <- find_hyperplane(solution, Y, X)
+
+#defining slope and y-intercepts for maximum classifier
+slope <- QP_hyperplane[1] 
+yint <- QP_hyperplane[2]
+yint1<- QP_hyperplane[3]
+yint2 <- QP_hyperplane[4]
+
+#creating DF to display slope and coefficents 
+calc_df <- data.frame(slope, yint, yint1, yint2)
+
+colnames(calc_df) <- c("slope", "Maximum Classifier Intercept", "Soft Margin Intercept (-1)", "Soft Margin Intercept (1)")
+rownames(calc_df) <- ""
+
+kable(calc_df)
+```
+The table above shows that each respective line has a gradient of 3 and that the decision boundary intercept was -8. The individual soft margins for each class, -1 and 1, were -3 and -13 respectively. 
+
+```{r, out.width="70%"}
+#plot results
+data %>%
+  ggplot(aes(x = x2, y =x1, fill = y))+
+  geom_point(aes(color = y))+
+  scale_color_manual(values = c("blue", "red"))+
+  geom_abline(intercept = yint1, slope = slope, size = 1, linetype= "dashed")+
+  geom_abline(intercept = yint, slope = slope, size = 1)+
+  geom_abline(intercept = yint2, slope = slope, size = 1, linetype= "dashed")+
+  theme_classic()
+```
+
+##
+
+The graph above indicated that the hyperplane has been optimised as no values are located in the soft margin and the decision boundary lines directly between the perpendicular distance between support vectors.
+
+### Task 3
+The classification rule classifying which class, -1 or 1, each data point will be classified into whne new data is entered into the algorithm. The mathematical formula for the classifcation rule is:
+
+$$\beta_0 + \beta_1X_2 - Y = + value \ |\  class \space 1$$
+
+```{r}
+data$classification_rule <- yint + slope * data$x2 - data$x1
+data
+```
+
+The calculated results in the data frame above display the classic rule values all correspond with the factor class of the response variable y.
+
+The margin of each support vector was calculated using the below function. This was adapted from an article from BYJU (2020) which detailed how to calculate perpendicular distance between 2 lines. The margin to boundary distance was calculated using the distance equation: $$d = \frac{|C_1 - C_2|}{\sqrt{A^2 + B^2}}$$
+
+Since this only calculated the distance between a support vector and the decision boundary, the margin distance needed to be multiplied by 2 to calculate the total perpendicular distance.
+
+### Task 4
+```{r}
+margin_to_boundary <- function(points, slope, yint){
+  x1 <- c(1, yint + slope) - c(-yint/slope, 0)
+  x2 <- points - c(1, yint + slope)
+  x3 <- cbind(x1, x2)
+  x4 <- sqrt(sum(x1 * x1))
+  x5 <- det(x3)
+  margin_distance <- x5/x4
+  return(margin_distance)
+}
+
+margin_distances <- c()
+
+for (i in 1:n){
+  margin_distances[i] <- margin_to_boundary(c(data[i,1],data[i,2]), slope, yint)
+}
+
+margin_distance <- min(abs(margin_distances))*2
+margin_distance
+
+```
+
+Thus the calculated distance between each support vector was 0.6325. 
+
+# Part 2: An Application
+
+## 2.1 Background on Credit Card Dataset
+The data, **“CreditCard Data.xls”**, is based on Yeh and hui Lien (2009). The data contains 30,000 observations and 23 explanatory variables. The response variable, Y, is a binary variable where “1” refers to *default payment* and “0” implies *non-default payment*. The description of 23 explanatory variables is as follows:
+
+* X1: Amount of the given credit (NT dollar): it includes both the individual con- sumer credit and his/her family (supplementary) credit.
+
+* X2: Gender (1 = male; 2 = female).
+
+* X3: Education (0 = unknown; 1 = graduate school; 2 = university; 3 = high school; 4 = others; 5 = unknown; 6 = unknown).
+
+* X4: Marital status (0 = unknown; 1 = married; 2 = single; 3 = others).
+
+* X5: Age (year)
+
+* X6 - X11: History of past payment. The data was tracked the past monthly payment records (from April to September, 2005) as follows: X6 = the repayment status in September, 2005; X7 = the repayment status in August, 2005; . . .;X11 = the repayment status in April, 2005. The measurement scale for the repayment status is: -2= no consumption, -1=pay duly, 0 = the use of revolving credit; 1 = payment delay for one month; 2 = payment delay for two months; . . .; 8 = payment delay for eight months; 9 = payment delay for nine months and above.
+
+* X12-X17: Amount of bill statement (NT dollar). X12 = amount of bill statement in September, 2005; X13 = amount of bill statement in August, 2005; . . .; X17 = amount of bill statement in April, 2005.
+
+* X18-X23: Amount of previous payment (NT dollar). X18 = amount paid in Septem- ber, 2005; X19 = amount paid in August, 2005; . . .;X23 = amount paid in April, 2005.
+
+
+## 2.2.1 Data
+(a) Select a random sample of 70% of the full dataset as the training data, retain the rest as test data. Provide the code and print out the dimensions of the training data.
+
+The credit dataset was read into R using the readxl package. Before the dataset was partitioned into its training and testing sets, exploratory analysis was conducted to check the normal distribution of numerical variables as well as the distribution of factor levels for each categorical variable. This section of the assignment took the longest to implement because this exploratory analysis unveiled more features of the dataset that needed to be addressed before the data could be used to training the machine learning algorithms. 
+
+```{r, warning=F, message=F}
+#library to read in data
+library(readxl)
+```
+
+The first column of the raw credit dataset was removed because it did not provide value to the data. Another small change included changing the response variable (response column name) from "default payment next month" to "Default", to improve efficiency when coding in R. 
+```{r}
+#read in credit-card data
+raw_credit_data <- read_xls("CreditCard_Data.xls", col_names = T, skip = 1)
+
+#drop ID column
+raw_credit_data<- raw_credit_data[-1]
+
+#rename default status after viewing data
+raw_credit_data <- raw_credit_data %>% 
+  rename("Default" = `default payment next month`) %>% 
+  mutate(Default = as.factor(Default))
+```
+
+The background description about each variable in the credit dataset also indicated a discrepancy in the in the Education variable. The description detailed that if the client’s education was unknown it could be either 0, 5 or 6. Due to this unknown education statuses were changed to 0. The respective categorical variables. "SEX", "EDUCATION", "MARRIAGE", "PAY_0", "PAY_2", "PAY_3", "PAY_4", "PAY_5", "PAY_6",  were formatted to factors for this assessments by implement as.factor() inside a lapply() function. To check the variable class for the dataset, the class() function was used inside a sapply() function printing out each class to the console.  
+
+```{r}
+#changing all unknown education categories to be 0 after reading task sheet
+raw_credit_data <- raw_credit_data %>% 
+  mutate(EDUCATION = ifelse(EDUCATION > 4 , 0, EDUCATION))
+
+#list of factor columns names
+factor_cols<- c("SEX", "EDUCATION", "MARRIAGE", "PAY_0", "PAY_2", "PAY_3", "PAY_4", "PAY_5", "PAY_6")
+
+#change numeric variables to factors
+raw_credit_data[,factor_cols] <- lapply(raw_credit_data[,factor_cols], as.factor)
+
+#check variables class
+sapply(raw_credit_data, class)
+```
+
+Summary statistics were used in conjunction with bar graphs for categorical variable and density plots for numeric variables to inspect the distributions of each variable. This as done to see if any variable require further transformation to improve the machine learning algorithm. A bar graph was generated for the response variable to determine the levels of each class. This revealed that dataset was very unbalanced and contained 23364 Non-default records and 6636 Default records. This is a problem when using machine learning algorithms because an imbalanced dataset may lead to inflated performance estimates. Due to this, the model selection needed to be flexible enough to use this dataset which will be discussed further below. The response variable was removed from the raw data and saved as a response variable before the categorical and numerical variable were facetted. 
+
+```{r out.width="70%"}
+#getting summary stats on Credit dataset
+summary(raw_credit_data)
+
+#graphing the response variabel Default
+raw_credit_data %>% 
+  group_by(Default) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = Default, y = n, fill = fct_rev(Default)))+
+  geom_bar(stat = "identity")+
+  geom_text(aes(label = n))+
+  labs(title = "Inspection of response variable: Default", fill = "Default Status")+
+  ylab("Frequency")+
+  xlab("Default Status")
+
+#defining response variable from raw data
+credit_response_variable <- as.numeric(raw_credit_data$Default)
+
+credit_response_variable <- ifelse(credit_response_variable == 1, 0, 1)
+
+#levels(credit_response_variable) <- c("Non_default", "Default")
+
+#removing response variable from raw data
+n_col <- ncol(raw_credit_data)
+raw_credit_data1 <- raw_credit_data[,-n_col]
+
+```
+
+The facetted bar graphs of categorical variables displayed that each “PAY” variable was positively skewed. To maintain data integrity, these categorical variable were not changed. 
+
+```{r out.width="70%"}
+#inspecting other categorical variables to check distributions
+raw_credit_data %>% 
+  select(factor_cols) %>%
+  gather() %>% 
+  ggplot(aes(value))+
+  facet_wrap(~ key, scales = "free")+
+  geom_bar(stat = "count")
+
+```
+
+The facetted density graphs of each numerical variable displayed that all variables were highly skewed. The skewness of each variable was calculated by applying the skewness() function, from the e1071 library, over each column of the numeric dataset. This was achieved using a apply()  function. If these variable were kept in their original distributions this would affect the machine learning algorithms, thus a log transformation was applied to make all numeric variables more normally distributed. A skewed data frame was created as well as a generating the same facetted density plot to display the changed in skewness value after the log transformation. 
+
+```{r out.width="70%"}
+#checking numeric variable distribution 
+numeric_varaibles <- raw_credit_data1 %>% 
+  select(-factor_cols)
+
+numeric_varaibles %>% 
+  gather() %>%
+  ggplot(aes(x = value))+
+  geom_density()+
+  facet_wrap(~ key, scales = "free")+
+  theme_classic()+
+  theme(text = element_text(size = 7),
+axis.text.x = element_text(angle = 45, hjust=1))
+```
+
+```{r, warning=F, message=F}
+library(e1071)
+skewness <- apply(numeric_varaibles, 2, skewness)
+
+transformed_numeric_variables <- log(numeric_varaibles)
+
+transformed_numeric_variables[transformed_numeric_variables == -Inf] <- 0
+transformed_numeric_variables[transformed_numeric_variables == "NaN"] <- 0
+
+T_skewness <- apply(transformed_numeric_variables, 2, skewness)
+
+skewness_df<- cbind(as.data.frame(skewness), as.data.frame(T_skewness))
+colnames(skewness_df) <- c("Raw Data", "Transformed Data")
+skewness_df
+```
+
+```{r out.width="70%"}
+transformed_numeric_variables %>% 
+  gather() %>%
+  ggplot(aes(x = value))+
+  geom_density()+
+  facet_wrap(~ key, scales = "free")+
+  theme_classic()+
+  theme(text = element_text(size = 7),
+axis.text.x = element_text(angle = 45, hjust=1))
+
+```
+
+The numeric and factor variable were then combined into one full data frame before the training and test partitions were obtained. All variables including the response variable were changed to numeric variables in order to create a test and training matrix for the selected tree model.
+
+```{r}
+#combining transformed variables and factored variable
+factor_variables <- raw_credit_data %>% 
+  select(factor_cols)
+
+cleaned_credit_data <- cbind(transformed_numeric_variables, factor_variables)
+cleaned_credit_data[,factor_cols] <- lapply(cleaned_credit_data[,factor_cols], as.numeric)
+```
+
+### Obtaining the Test and Training Datasets
+Once the data was pre-processed number of rows was obtained and multiplied by 0.7 to determine the required sample size. Set.seed was initiated for reproducibility and the training index was acquired using the sample() function from base R. This index was used to partition the cleaned credit dataset into training and testing datasets which was also saved as respective matrices using the as.matrix() function. Training and testing lables were also obtained using this method on the credit response vector. 
+
+```{r}
+#getting length of dataset
+rows <- nrow(cleaned_credit_data)
+
+#calculating sample size
+sample_size <- 0.7*rows
+
+#setting seed for reproducibility
+set.seed(123)
+
+#obtaining training index
+training_index <- sample(seq_len(rows), size = sample_size)
+
+#getting training and testing datasets
+training_data <- cleaned_credit_data[training_index,]
+testing_data <- cleaned_credit_data[-training_index,]
+
+#converting training and test data to matrices
+training_matrix <- as.matrix(training_data)
+testing_matrix <- as.matrix(testing_data)
+
+#defining training and test labels as vector
+training_labels <-credit_response_variable[training_index]
+testing_labels <- credit_response_variable[-training_index]
+
+#printing out dimensions of training data
+dim(training_data)
+dim(testing_data)
+```
+
+Separation of the even dataset into training and testing datasets resulted int 21000 observations in the training and 9000 observations in the test dataset.
+
+## Selecting a model
+
+(a) Use an appropriate tree based algorithm to classify credible and non-credible clients. Specify any underlying assumptions. Justify your model choice as well as hyper- parameters which are required to be specified in R. **(10 marks)**
+
+The objective of this machine learning task was to choose a model that accurately classified each observation into their respective credible and noncredible class, “Non-Default” or “Default”. Due to the categorical nature of the response variable, this task require a classification tree algorithm to achieve this. One problem that was observed in the dataset was the disproportionate amounts of each class in the response variable. As previously mentioned, the “Default” response variable in dataset was highly balanced which consisted of 23364 credible observations, “Non-default” and 6636 non-credible observations, “default. Due to uneven response variable, the model needed to be flexible enough to provide a high level of accuracy despite. For this reason, the Extreme Gradient Boosting or **XGBoost** model was selected due to its high level of flexibility and ability to provide high accuracy when approximating categorical response variables.
+
+The justification for this model choice was due to the surround literature which indicated that this algorithm worked well with datasets containing an unbalanced response variable (very flexible), it was computationally efficient compared to other complex tree models as well and was easily tuneable (Morde & Anurage Setty, 2019).
+
+The XGBoost model is a decision-tree-based ensemble Machine Learning algorithm that uses a gradient boosting framework. This algorithm succeeds over other tree based models through the use of parallel processing, tree pruning, handling missing values, and regularisation to avoid overfitting/bias. The algorithm takes a small steps iterative approach by creating multiple shallow trees and applied them to the residuals of previous trees. The main benefit of this algorithm is that variable importance can be attained despite the created of the many shallow trees. Usually, variable importance diminishes with the creation of multiple trees, however, this model accurately calculates variable importance and their impact that each feature has on the model. 
+
+For this task, the XGBoost algorithms were attained from the XGBoost packages. Cross validation and tuning was achieved using the carat package using crossfold validation. This required the exand.grid() and trainControl() which were input into train() function using the method "xgbTree".The respective learning rates that were assessed were 0.01 and 0.1 and nrounds included 1000 and 500. The reason only two parameters were selected for eta and nrounds was due to the amount of computing power and time adding in more variables to the train() function would add. Thus, if different results were chosen for eta and nrownds on a more powerful computer, this may have resulted in different optimised values. 
+
+These two parameters in question were input into the expand.grid() function with a number of other parameters including, max_depth, min_child_weight, subsample, consample_bytree and gamma. The trainControl() function was used to defined the cross-validation method and indicated the number of the times the algorithm was validated and repeated. The model parameters were finally input into the train function to identify the best learning and nround parameters. Once an optimal solution was found by tuning the respective model parameters (See Below), the recommended parameters were input into the XGBoost() and xgb.cv() algorithms in order to identify the variable importance for each variable in that dataset and predict the test dataset. Once predictions were made using the test dataset the various model evaulation metrics we computed using using confusionMatirx() (See part 3). 
+
+### Evaluation Metrics
+The metrics used to evaluate the model were “error”, “AUC” (Area Under the ROC curve) , and “AUCPR” (Area Under the Precision Recall Curve). These metrics were store in variable called eval_metrics as a list. The error rate calculated the binary classification error rate which was calculated using dividing the sum of False Positive and False Negatives over the total obervations classified. The AUC values evaluates how well a binary classification model is able to distinguish between true positives and false positives. The AUCPR values is used to evaluate how well a binary classification model is able to distinguish between precision recall pairs or points (xgboost developers, 2020). These metrics were used in the xgb.cv() function after the training data had been implemented. These metrics were used to evalutate the performance of the model and identified how well classified the model. 
+
+### Algorithm Parameters
+A number of parameters were specified for this algorithm inside a list which include, eta, max_depth, nthread, booster, objective, subsample, consample_bytree, scale_pos_weight and max_delta_step.
+
+1.	ETA – Learning rate. Step size shrinkage used in update to prevents overfitting. ETA was set to 0.01 from tuning. 
+2.	Max_depth – Max depth of tree. Increasing this value will make the model more complex and more likely to overfit. Kept at Default levels, max_depth = 6.  
+3.	Nthread - Number of parallel threads used to run XGBoost. 
+4.	Booster – Indicated which booster to use
+5.	Objective – specifying the learning task. “binary:logistic” which sets to logistric regression for binary classification. 
+6.	Subsample - sampling proportion of the training data to be used on each iteration which reduced computation time. Set to 0.8 to reduce time but prevent overfitting. 
+7.	Colsample_bytree – sampling proportion of columns/features to be used on each iteration. Set to 0.8 to reduce time but prevent overfitting.
+8. scale_pos_weight - gives additional importance to the minority class (default) in the response variable. The calculated imbalance is approximately 3.5 times which is calculated by dividing the majority class in the response variable by the minority $\frac{233364}{6636} \approx 3.5$. This parameter should provide approximately equal importance to each class of the response variable in the training dataset.
+9.	Max_delta_step – can constrain step updates by the model, thus set to 1 to reduce the effect. 
+10. VerboseIter - print the statistics while iterating. Was set to TRUE for in this model as an implementation oversite.  
+
+### Parameters inside Tuned XGBoost Function
+1. Nrounds - number of maximum iterations (trees) for the algorithm. 1,000 is a general standard to start. Was set to 500 from model tuning. 
+2. Nfold - number of folds to be used in cross validation. General standard is 10 folds and is applied here.
+3. Stratified - retain the class proportion when sampling or not. Set to TRUE (1) due to imbalanced response variable.
+4. Early_stopping_rounds - stops the algorithm if there is no improvement after a certain number of iterations.
+5. Verbose - tells the algorithm whether or not to print the statistics while iterating. 0 stops this. 
+
+```{r eval=FALSE}
+
+#seting expand grid for tuning with the selected eta nad nround parameters
+myparamGrid <- expand.grid(eta = c(0.01,0.1), nrounds = c(1000, 500), max_depth = 6,
+                            min_child_weight = 1,
+                            subsample = 0.8,
+                            colsample_bytree = 0.8,
+                            gamma = 0.1)
+
+#setting trainControl for model tuning
+xgb_fitControl <- trainControl(method = "repeatedcv",
+                            number = 10,  # 2-fold CV
+                            repeats = 5, # repeated 5 times
+                            verboseIter=TRUE,
+                            returnData=FALSE
+                            )
+
+#running XGBoost tune with KAPPA (Accuracy as metric)
+xgb_tuneFit <- train(training_matrix, factor(training_labels), 
+                     method = "xgbTree",
+                     metric = "Kappa",
+                     trControl = xgb_fitControl,
+                     tuneGrid = myparamGrid
+                     )
+
+```
+
+```{r warning=F, message=F}
+library(xgboost)
+library(caret)
+
+#reading in tuned xgboost model
+xgb_tuneFit <- readRDS("Final_xgb_tuneFit.rds")
+xgb_tuneFit #displaying optimal tuned model
+```
+
+After tuning the model, the optimal eta and nrounds were 0.01 and 500 respectively with a reported accuracy rating of 0.821 and Kappa value of 0.3818. However, as there was minimal differences between the evaluation metrics when nrounds = 1000. Thus nrounds could have also been set to 1000 and produce a similar prediction classification result.   
+
+Thus the final parameters input into the function included:
+
+1. eta = 0.01
+2. nrounds = 500
+3. max_depth = 6
+4. gamma = 1 
+5. min_child_weight = 1 
+6. subsample = 0.8
+7. colsample = 0.8
+8. scale_pos_weight = 3.5
+9. max_delta_step = 1
+10. alpha = 1
+
+```{r}
+#Setting evaluation metrics
+eval_metrics <- list("error","aucpr", "auc") # error under precision/recall curve
+
+#setting parameters
+parameters <- list(eta = 0.01, max_depth = 3,min_child_weight = 1,
+booster = "gbtree", objective = "binary:logistic", subsample = 0.8,
+colsample_bytree = 0.8, scale_pos_weight = 3.5, 
+max_delta_step = 1, gamma = 1, alpha = 1 )
+```
+
+```{r eval = FALSE}
+#set seed for reproducibility
+set.seed(123)
+
+#running final tuned model
+xgb_tuned_model <- xgboost(
+data = training_matrix,
+label = training_labels, 
+nrounds = 500,
+nfold = 10,
+verbose = 0,
+stratified = 1,
+metrics = metrics,
+params = params,
+maximize = TRUE, early_stopping_rounds = 100
+)
+
+#saving model for convience when knitting report
+saveRDS(xgb_tuned_model, "xgb_tuned_modle.RDS")
+
+#running cv for training plots and evaulation metrics
+xgb_tuned_CV <- xgb.cv(
+data = training_matrix,
+label = training_labels, 
+nrounds = 500,
+nfold = 10,
+verbose = 0,
+stratified = 1,
+metrics = metrics,
+params = params,
+maximize = TRUE,
+early_stopping_rounds = 100
+)
+
+saveRDS(xgb_tuned_CV, "xgb_tuned_cv.RDS")
+```
+
+For the purposes of this assignment, each model was saved as an RDS file when the Markdown file was knitted in order to reduce processing time. 
+
+```{r}
+#loading the tuned xgboost model
+xgb_tuned_model <- readRDS("xgb_tuned_modle.RDS")
+
+#lodaing the tuned xgb.cv model
+xgb_tuned_CV <- readRDS("xgb_tuned_cv.RDS")
+```
+
+(b) Display model summary and discuss the relationship between the response variable versus selected features.
+```{r, out.width="70%"}
+#running summary function of xgb model
+summary(xgb_tuned_model)
+#getting varaible importnace in a df
+importance_results <- xgb.importance(model = xgb_tuned_model)
+
+#plotting Gain to display importance of each variable. 
+xgb.plot.importance(importance_matrix = importance_results, top_n = 15, measure = "Gain",xlab = "Importance", main = "XGBoost Tuned Model")
+```
+
+The summary function was used on the model but did not provide any helpful information about the xgb_tuned_model. Thus variables importance was assessed using the xgb.importance() function from the XGBOOST library. The above plot indicated the 3 variables that were most important when partitioning the dataset included PAY_0, BILL_ATM1 and LIMIT_BAL. The PAY_0 variable describes the repayment status at September, BILL_ATM1 describes the amount of the bill statement and LIMIT_BAL describes the amount of credit given. Interestingly repayment status at September had the greatest importance out of all other features with an importance value of 0.267 when classifying the response variable. This seems to suggest that clients with owing money at September had a greater likelihood being non-credible customers. The next variables, BILL_ATM1 and LIMIT_BAL were substantially lower in value with importance values of 0.062 and 0.051 respectively in classifying the response variable. Despite these lower importance values, if customer had money owing  on their account for and extended amount of time or had a individual or family history of credit, this suggested that they were more likely to default. 
+
+(c) Evaluate the performance of the algorithm on the training data and comment on the results.
+
+The metrics, error rate, AUC and AUCPR were used to identify the performance of the XGBoost model. 
+```{r warning=F, message=F, out.width="70%"}
+library(ggpubr)
+
+xgb_results <- as.data.frame(xgb_tuned_CV$evaluation_log)
+
+#getting Average AUC, AUCPR and Error for evaulation metrics
+mean_train_auc = mean(xgb_results$train_auc_mean)
+mean_train_aucpr = mean(xgb_results$train_aucpr_mean)
+mean_train_error = mean(xgb_results$train_error_mean)
+
+#creating DF
+xgb_metric_results<- as.data.frame(cbind(mean_train_auc,
+                                         mean_train_aucpr,
+                                         mean_train_error))
+
+#plotting evaluation metrics for evaulation discussion
+g1<- xgb_results %>% 
+  ggplot()+
+  geom_line(aes(x = iter, y = train_aucpr_mean), color = "orange")+
+  geom_line(aes(x = iter, y = test_aucpr_mean), color = "blue") +
+  labs(y = "AUCPR", title = "AUCPR Results")
+
+g2 <- xgb_results %>% 
+  ggplot()+
+  geom_line(aes(x = iter, y = train_auc_mean), color = "orange")+
+  geom_line(aes(x = iter, y = test_auc_mean), color = "blue") +
+  labs(y = "AUC", title = "AUC Results")
+
+g3<- xgb_results %>% 
+  ggplot()+
+  geom_line(aes(x = iter, y = train_error_mean), color = "orange")+
+  geom_line(aes(x = iter, y = test_error_mean), color = "blue") +
+  labs(y = "Error Rates", title = "Error results")
+
+ggarrange(g1,g2,g3)
+
+
+```
+
+The results from the xgb.cv() evaluation log were used to find the average AUC, AUCPR and error for the training dataset. The The data frame and 3 graphs shown above displays how well the algorithm performed with the credit dataset after the data had been processed and set with the optimised parameters. AUC metric displays the areas under the Receiver Operating Curve (ROC) curve with an average value of 0.91 indicates that the XGBoost algorithm was successful in identifying Non-default and Default observations in that data. The metric is especially useful when determining the success of algorithms when implemented in unbalanced datasets. The error metric was also very low when indicates the algorithm has performed will. However, these metrics are sometimes misleading when evaluating the performance of a model as the model may have overfitted to the data points and when the xgb.cv() function calculated the AUC and error rate from the training data. As a result of this, the best way of evaluating how the algorithm is to predict the classes of the test dataset and create a confusion matrix. Usually algorithms that have overfit tend to have lower AUC, AUCPR and higher rrror rates for testing dataset.
+
+```{r}
+#displaying evaluation df
+kable(xgb_metric_results)
+```
+
+
+The AUCPR displays a lower value compared to the AUC. This metric tends to be a better indicator of performance when dealing with highly skewed datasets such as this one. This value is also quite high indicating that the algorithm has done a good job in classifying the response variable from the predictors. It is worth mentioning that algorithm optimisation can substantially increase AUC ROC values, but may not do the same for AUCPR curves (Davis, 2006).
+
+One method that may have improve the model, was incorporating Principal Component Analysis to reduce the amount of dimensions in the credit datasets. This reduced dataset would have resulted in lower computer processing times and even though the training metrics are high, a higher AUCPR value. Another method that may have been implemented of the categorical data was improving the distribution of each categorical factor in the PAY variables. This may have had some effect in the classification algorithm. The main aspect plaguing all machine learning algorithms is trying to fit unbalanced dataset. Due the nature of the unbalanced response variable, the model may have overfitted the training data despite its flexibility. If the data was more balanced various other classification trees could have been considered for this task.
+
+## 2.2.3 Support vector classifier
+
+(a) Use an appropriate support vector classifier to classify the credible and non-credible clients. Justify your model choice as well as hyper-parameters which are required to be specified in R. **(10 marks)**
+
+Prior to fitting the SVM classifying to the processed credit data, the training dataset was combined with the training labels. The labels were then changed back to factors with the “0” and “1” factor levels transformed to “Non_default” and “Default” respectively. 
+
+```{r}
+#creating formated training DF for SVM with factor training lables attached
+training_data2 <- cbind(training_data, training_labels)
+colnames(training_data2)[colnames(training_data2) == "training_labels"] <- "Default"
+training_data2$Default <- as.factor(training_data2$Default)
+levels(training_data2$Default) <- c("Non_default", "Default")
+```
+
+As stated in Part 1 of the assessment, a Support Vector Machine is a classification algorithm for binary classification problems. The aim of the SVM is to identify the hyperplane between a binary class which the algorithm can then use to when new data is added to the model to classify it. When a data is not linear, nonlinear kernels must be implemented to create nonlinear classifiers. Due to the unbalanced response variables,  the support vector classified algorithm chosen the classify the dataset was SVM with a radial kernel. 
+
+Compared to the XGBoost algorithm, SVM algorithm have less parameters in total which makes them easier to tune in comparison. However, as a nonlinear kernel is being use in the SVM this changes the parameters used throughout the algorithm. The nonlinear nature of the dataset also can increase the computational time of the algorithm, which can be exacerbated when coupled with large uneven dataset. One substantial benefit of using SVM algorithms in R is the embedded regularisation parameter. This makes the use of the algorithm more flexible for unprocessed data. However, as log transformations were used to normalise the numeric variables prior to implementing it, this parameter was excluded. 
+
+### Please Note
+Please note that a mistake was made during the optimisation of the XGBoost algorithm that may affect the validity of the stated findings. The tuning of XGBoost algorithm was changed close to the submission date and set to a higher degree than SVM with the trainControl variable containing number = 10 and repeat = 2. Due to these parameters, this meant the optimisation took much longer processing time. The SVM algorithm also used the carat package to optimise the algorithm, but set number of repeat to 3  and 1 respectively. This meant that SVM took 35 mins of processing time whilst the XGBoost took 1.5 hours to optimise. This error was identified close to the submission date thus was not changed for this assessment. If this method was repeated, both algorithms would have the same parameters for comparison. 
+
+### Optimising the SVM Algorithm
+For this task, the SVM algorith was implemented using the Carat Package. This required trainControl() and exand.grid() which used inside the train(). The method parameter in the trainControl() function use a repeated cross validation with method = "repeatedcv". THis different from the method set in the train() function, "svmRadial", which trained the algorithm using the nonlinear SVM algorithm. The respective parameters and their justification are observed below:
+
+## Model Parameters in Each Carat Function
+### Traing Control
+1.	Method - determines the sampling/validation method uses int eh algorithm. "repeatedcv" means repeated cross validation.
+2.	Number – number of folds for cross validation. Number was set to 3 for computation time. 
+3.	Repeats =- the number of repetitions during cross validation. Was set to 1 due to computation time. 
+4.	classProbs – set to TRUE to return class probabilities to evaluate the model. 
+5.	summaryFunction – evaluates the summary of the model. Set to ‘twoClassSummary’ because of the binary response variable. 
+
+### Expand Grid
+1.	Sigma (gamma) – controls the influence of individual training instances. The higher the value, the more consideration the algorithm will have for all data point to calculate the hyperplane. Was set to 1 due to computation time. 
+2.	C (cost) – is the regularisation parameter relates to the support vectors on all dimensions of the hyperplane. This parameter indicates the number of misclassifications that are allowed. For this parameter, 3 respective costs were tested  0.25, 0.5 and 1. 
+
+### Train
+1.	Method – set to “svmRadial” for nonlinear SVM kernal. 
+2.	trControl – set to previously defined trainControl function from Carat which contains a number of defined parameters. 
+3.	Metric – set to ‘ROC’ this is to get the algorithm to calculate the AUCROC value and allow for optimisation comparison. 
+4.	tuneGrid – sets the number of combinations to be checked whilst tuning the model. expand.grid() function was supplied here with the 3 respective cost values. 
+
+
+```{r eval=FALSE}
+set.seed(123)
+train_control <- trainControl(method = "repeatedcv",
+                              number = 3, 
+                              repeats = 1,
+                              classProbs = T,
+                              summaryFunction = twoClassSummary)
+
+svmGrid <- expand.grid(sigma = 1, C=c(0.25,0.5,1))
+
+svm_radial <- train(Default ~ .,
+                    data = training_data2,
+                    method = "svmRadial", trControl = train_control, metric = 'ROC',
+                    tuneGrid = svmGrid)
+
+saveRDS(svm_radial, file = "svm_radial2.RDS")
+```
+
+```{r}
+svm_radial <- readRDS("Final_svmRadial_tuneFit.RDS")
+svm_radial
+```
+The tuned SVM algorithm report that sigma = 1 and C = 0.25 were used to train the model as they yielded the highest ROC and sensitivity rating. However when C was 0.5, the specificity value was marginally higher with 0.07629877. However the algorithm chose the parameters that yielded the highest ROC value. 
+
+Therefore the final parameters using the SVM Radial model included:
+
+1. method (trainControl) = "repeatedcv",
+2. number = 3
+3. repeats = 1,
+4. classProbs = T,
+5. summaryFunction = twoClassSummary
+6. sigma = 1 
+7. C = 0.25
+8. method (train) = "svmRadial"
+9. metric = "ROC"
+
+(b) Display model summary and discuss the relationship between the response variable versus selected features. **(10 marks)**
+
+Feature importance of the model displayed similar results as the XGBoost algorithm that PAY_0 was the most important variable in separating the data using the classification tree. However, unlike the gradient algorithm, the SVM variable importance graph displayed a reducing level of importance for each feature in the dataset. 
+
+
+```{r out.width="70%"}
+#printing out SVM model summary
+svm_radial$finalModel
+
+svm_variable_importance <- varImp(svm_radial)
+
+importance_df <- as.data.frame(svm_variable_importance$importance)
+importance_df$names <- row.names(importance_df)
+
+importance_df %>% 
+  ggplot(aes(x = reorder(names, -Default), y = Default))+
+  geom_bar(stat = "identity", fill = "orange", color = "black") +
+  theme_classic()+
+  theme(text = element_text(size = 7),
+axis.text.x = element_text(angle = 45, hjust=1)) +
+  labs(title = "Variable Importance for SVM")+
+  ylab( "Feature Importance")+ 
+  xlab("Feature")
+```
+
+Feature importance of the model displayed similar results as the XGBoost algorithm that PAY_0 was the most important variable in separating the data using the classification tree. However, unlike the gradient algorithm, the SVM variable importance graph displayed a reducing level of importance for each feature in the dataset. However, the SVM variable importance graph differed substantially to the XGBoost graph in that PAY_2 and PAY_3 were considered more important when separating and classifying Non-default and Default observations. All PAY variables indicating the amount of months a payment was late were contained in the top 10 variables of the variable graph. This indicates that the algorithm heavily uses on these ordinal categorical data points when classifying credible and noncredible observations. This reliance on the PAY variables may be due to the distribution of factor category and that majority of all factor columns within -2 to 0 indicating that majority of the dataset are not or have not been behind in payments. Another similar aspect is that numeric variables displayed a higher level of importance compared to the demographic categorical counterparts. 
+
+(c) Evaluate the performance of the algorithm on the training data and comment on the results.
+```{r}
+svm_radial$results
+```
+
+The SVM model summary revealed that the algorithm had a relatively high training error rate of 0.22. This result indicated that the model had difficulty classifying the response variable. This results is also observed in the ROC values (See data frame above) for the training data which reported a value of 0.692 for Sigma = 1 and a cost value of 0.25. When compared to the XGBoost AUC value, this is a reduced result which can be attributed to the distribution of the response variable which would have had a greater effect as the algorithm in comparison to the XGBoost. The results also display that the algorithm is highly sensitive to distribution of the response variable with values greater than 0.98 for all three cost values.  
+
+As previously mentioned in XGBoost evaluation, this model could also be improved by dimensionality of the dataset could be reduced using PCA. Another method that may improve this model could be including the up sampling parameter in the SVM model. This may have produced more observations of the smaller "Default" class and improved the classification of the model.
+
+## 2.2.4 Prediction
+Apply your fitted models in 2.2.2 and 2.2.3 to make prediction on the test data. Evaluate the performance of the algorithms on test data. Which models do you prefer? Are there any suggestions to further improve the performance of the algorithms? Justify your answers. **(20 Marks)**
+
+Before the each respective model was used to predict the test dataset, the testing dataset labels (0 and 1) were change to “Non_default” and “Default”. The test data and each model was input into the predict function to determine the prediction vectors. The XGBoost algorithm created a vector of prediction values which was then set to factors using the probability cut off rate of 0.5 inside an ifelse() function. If the prediction values was greater than 0.5 it was set to 1 and vice versa. The predictor class then contained the binary response variable which was then set to factors and was change to “Non_default” and “Default”.
+
+Accuracy, sensitivity and other evaluation metrics were calculated using confusionMatrix() function from the carat package. The pROC package was also used to calculate the AUC values for each model. Both evaluation functions used the prediction class and test labels. Precision, Recall and F Statistics were calculated manually using confusion matrix and respective equations. This was done in order help determien the best classifier for the evaluation. The AUC value was visualised using ROC curves from the pROC package. This was achieved using the roc() with smoothed, ci (confidence interval) and number of other parameters set to true whilst stratified was set to FALSE (See code below). 
+
+```{r warning=F, message=F}
+library(pROC)
+#changing test lables to factor levels "Non_default" and "Default"
+testing_labels <- as.factor(testing_labels)
+levels(testing_labels) <- c("Non_default", "Default")
+
+#getting prediction of test data with xgboost 
+xgb_pred_testing_vals <- predict(xgb_tuned_model, as.matrix(testing_matrix))
+
+xgb_test_preds <- as.factor(ifelse(xgb_pred_testing_vals >= 0.5, 1, 0))
+xgb_test_preds<- factor(xgb_test_preds, levels = c("0","1"))
+levels(xgb_test_preds) <- c("Non_default", "Default")
+
+#creating manual CM for recall and precision metrics
+xgb_conf_matrix_test <- table(xgb_test_preds, testing_labels)
+
+xgb_accuracy <- sum(diag(xgb_conf_matrix_test))/sum(xgb_conf_matrix_test)
+xgb_recall <- xgb_conf_matrix_test[1,1]/sum(xgb_conf_matrix_test[,1])
+xgb_precision <- xgb_conf_matrix_test[1,1]/sum(xgb_conf_matrix_test[1,])
+xgb_f_measure <- 2*xgb_recall*xgb_precision/(xgb_recall+xgb_precision)
+xgb_error <- (xgb_conf_matrix_test[1,2]+xgb_conf_matrix_test[2,1])/sum(xgb_conf_matrix_test)
+
+#obtaining AUC values for test data
+xgb_test_auc <- auc(testing_labels, factor(xgb_test_preds, ordered = T))
+
+xgb_eval_metrics <- c(xgb_accuracy, xgb_error, xgb_recall, xgb_precision, xgb_f_measure, xgb_test_auc)
+
+```
+
+
+```{r warning=F, message=F}
+#obtaining predictions for test and training data using SVM radial
+preds_test_svm <- predict(svm_radial, testing_data)
+
+#creating confusion matrices to check levels
+svm_test_confusion_matrix <- table(preds_test_svm,testing_labels)
+svm_test_confusion_matrix
+
+svm_accuracy <- sum(diag(svm_test_confusion_matrix))/sum(svm_test_confusion_matrix)
+svm_recall <- svm_test_confusion_matrix [1,1]/sum(svm_test_confusion_matrix [,1])
+svm_precision <- svm_test_confusion_matrix[1,1]/sum(svm_test_confusion_matrix [1,])
+svm_f_measure <- 2*svm_recall*svm_precision/(svm_recall+svm_precision)
+svm_error <- (svm_test_confusion_matrix [1,2] + svm_test_confusion_matrix [2,1])/sum(svm_test_confusion_matrix)
+
+#calculating AUC values for testing and training SVM predictions
+svm_test_auc <- auc(testing_labels, factor(preds_test_svm, ordered = T))
+
+svm_eval_metrics <- c(svm_accuracy, svm_error, svm_recall, svm_precision, svm_f_measure, svm_test_auc)
+
+```
+
+```{r}
+#obtaining evaluation metrics for test data prediction
+print("XGBoost Model")
+confusionMatrix(xgb_test_preds, testing_labels) #XGM
+#obtaining evaluation metrics for test data prediction
+print("SVMRadial Model")
+confusionMatrix(preds_test_svm,testing_labels) #SVM
+```
+
+## Model Evaulation
+The prediction vectors of the XGBoost and SVMRadial algorithms both yielded high naïve accuracy values of 0.8211 and 0.7919 respectively. The confusionMatrix() outputs also indicated at 95% confidence interval for accuracy ranging between 0.813 and 0.829 for XGBoost and 0.7834 and 0.8002. However, using accuracy alone to evaluate a model is dangerous as both models were affected by the unbalanced response variable. This is reflected in the specificity value of each confusionMatrix() output which indicated that both models did poorly predicting the minority class. However, XGBoost yeiled a higher specificity value of 0.3521 which indicated it performed better than the SVM model (0.08993). 
+
+```{r}
+eval_df <- as.data.frame(cbind(xgb_eval_metrics, svm_eval_metrics))
+colnames(eval_df) <- c("XGBoost", "SMVRadial")
+rownames(eval_df) <- c("Accuracy", "Error", "Recall", "Precision", "F Statistic", "AUC")
+kable(eval_df)
+```
+
+```{r out.width="70%", warning=F, message=F}
+#drawing ROC curves for test predictions
+xgb_pROC_obj_test <- roc(testing_labels,factor(xgb_test_preds, ordered = T),
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+#drawing ROC curves for testing and training SVM predictions
+svm_pROC_obj_test <- roc(testing_labels,factor(preds_test_svm, ordered = T),
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+```
+
+
+Another metrics used to determine the performance of classification models includes the Precision, Recall and F Statistic values. These metrics are usually used in conjunction with one another, especially since the F Statistic is calculated using Precision and Recall. When implementing models on unbalanced datasets, a higher the F Statistic and lower the error rate is used to determine which classification model performed better. The table above dispays that the XGBoost algorithm yielded a marginally higher F Statistic and lower error rate with 0.893 and 0.179 respectively whilst the SVM algorithm yielded values of 0.881 (F Statistic) and 0.208 (error rate). This indicates that XGBoost performed slightly better than the SVM algorithm. 
+
+The reflective metric indicating which model performed better was the AUC value and ROC curves. This results clearly displays which model was best as the SVM recorded a substantially low AUC of 0.5384 where as XGBoost was 0.652. As the cut off for AUC is 0.5, indicating that the model performed as well as a random generator, this low result indicates that the unbalanced dataset substantially affected the algorithm and barely had any effect on classifying the credible and noncredible observations. However, despite recording a higher AUC results the dataset seemed to have a large effect on the XGBoost algorithm as the value was not as optimal as expected. 
+
+## Preferred Model
+The preferred model for this report was the XGBoost due to the substantially lower computing time as well as the increase flexibility of the model when working with the unbalanced response variable. The XGBoost also yielded greater evaluation metric when compared with the SVM model (See Table above). One method affecting both models was the interoperability of the output. For XGBoost when the classification tree is visualised it is too big to see each separation node due to the large amount of generated trees. SVM is easier to interpret for datasets with lower dimensionality (2 or 3 dimensions) because it is easily graphs for people to understand the hyperplane separating the classes. However, when practical dataset containing more than 3 variables are classified, this algorithm cannot be visualised. Both algorithms can display the importance of each variable is easily understood, the level to which each variable affects the model. XGBoost however, determines how much each variable affects the classification of the response variable proportionally whilst SVM doesn’t. For this reason, XGBoost is slightly better for interpretability.   
+
+## Conclusion
+To conclude, XGBoost performed better in classifying the unbalanced credit dataset. As stated previously, reducing dimensionality and more pre-processing on categorical variables may have resulted in varying evaluation metrics. If more time was given to the tuning of each model this may cause both models to perform better during classification.  
+
+
+# References
+Distance between Two Parallel Lines Examples. (2020). BYJU's The Learning App. https://byjus.com/jee/distance-between-2-parallel-lines/
+
+Le. J. (2018) Support Vector Machines in R. 
+https://www.datacamp.com/community/tutorials/support-vector-machines-r
+
+Morde V. & Setty A. (2019). XGBoost Algorithm: Long May She Reign! KDnuggets. 
+https://towardsdatascience.com/https-medium-com-vishalmorde-xgboost-algorithm-long-she-may-rein-edd9f99be63d
+
+Walker. R (2020). Solve the SVM minimization problem with quadprog and ipop.
+https://gist.github.com/rwalk/64f1365f7a2470c498a4?fbclid=IwAR1xcy1kK4mvk85HSp3B81vrIgk2kcy8DEIS5SxHFM6G272AVe9W4aBG3Eo
+
+XGBoost Developers. (2020). XGBoost Parameters
+https://xgboost.readthedocs.io/en/latest/parameter.html#learning-task-parameters
+
+
