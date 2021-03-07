@@ -1,4 +1,4 @@
-# SVM-Analysis
+# SVM Analysis Using R Markdown
 
 This report was one of the most challenging university assessments I have ever completed. It consisted of two tasks which assessed students ability to implement respective Machine Learning models using R which were taught throughout the course. The main focus of the assessment was Support Vector Machines in which is assessed students theoretical and practical knowledge.
 
