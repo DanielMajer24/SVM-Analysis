@@ -4,4 +4,6 @@ This report was one of the most challenging university assessments I have ever c
 
 The first task required students to manually implement the SVM to create an optimised hyperplane which could be used to classifying new data points in they were introduced. The second task was a practical exercise in which a selected Machine Learning model would be compared to SVM. The selected machine learning model for this exercise was XGBoost.
 
+Please see the hyperlink below of a completed HTML report compiled in RMarkdown. 
+
 https://danielmajer24.github.io/SVM-Analysis/
